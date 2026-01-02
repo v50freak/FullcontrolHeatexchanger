@@ -1,0 +1,345 @@
+# printer/gcode parameters
+
+design_name = 'heatexchanger'
+nozzle_temp = 220
+bed_temp = 60
+print_speed = 3000
+fan_percent = 100
+printer_name='k1max' # generic / ultimaker2plus / prusa_i3 / ender_3 / cr_10 / bambulab_x1 / toolchanger_T0 / k1max1 /
+
+
+
+# design parameters
+midx = 110
+midy = 100
+EW = 0.5 # extrusion width
+EH = 0.3 # extrusion height (and layer height)
+initial_z = EH*0.9 # initial nozzle position is set to 0.6x the extrusion height to get a bit of 'squish' for good bed adhesion
+heh = 200 # original 200
+hed = 80 # original 80
+layers = int(heh/EH)
+
+hew=100 # active plate width, // original 100
+pd=5    # plate distance
+plates=int(hed/pd)
+draft=0.168   # verjuengung, gesamtbreite mitte = layers/2 * draft*2 +pd // original 0.125
+print("breitemitte")
+print(layers*draft+hew+pd/2+EW)
+print ("breiteunten")
+print(hew)
+print("tiefe")
+print(hed+pd/2)
+
+stabilizers = 30
+sx=midx   # startpoint x
+sy=midy-hed/2   # startpoint y
+
+lowfanspeed = 50  #prozent
+highfanspeed = 100 #prozent
+
+
+
+fastprintspeed=9000 #6000=100mm/s
+
+
+# generate the design (make sure you've run the above cells before running this cell)
+
+steps = []
+midpoint=0
+for layer in range(layers):
+  alayer = layers-layer
+  if layer < layers/2:
+  #baseplate
+    if layer == 0:
+      steps.append(fc.Fan(speed_percent=0))
+      f=-EW
+      while f < hew+2*EW:
+        steps.append(fc.Point(x=sx-hew/2+f, y=sy, z=initial_z+layer*EH))
+        steps.append(fc.Point(y=sy+plates*pd))
+        f += EW
+        if f < hew+2*EW:
+          steps.append(fc.Point(x=sx-hew/2+f))
+          steps.append(fc.Point(y=sy))
+        f += EW
+      steps.append(fc.Extruder(on=False))
+    #wt schichten 1
+      steps.append(fc.Printer(print_speed=fastprintspeed, travel_speed=20000))
+    else:
+      if (layer+1) % stabilizers==0:
+        #stabilisierungsbruecken
+        steps.append(fc.Fan(speed_percent=highfanspeed))
+        for plate in range(plates):
+          #ringerl links
+          steps.append(fc.Extruder(on=True))
+          steps.append(fc.Point(x=sx-hew/2-layer*draft, y=sy+pd*plate, z=initial_z+layer*EH))
+          steps.append(fc.Point(x=sx-hew/2))
+          steps.append(fc.Point(x=sx-hew/2,y=sy+pd*(plate+0.5)))
+          centre=fc.Point(x=sx-hew/2-layer*draft, y=sy+pd*plate+pd*0.75)
+          arc=(fc.arcXY(centre,pd/4,0.75*tau,-0.5*tau,15))
+          steps.extend(arc)
+          #infill
+        steps.append(fc.Point(x=sx-hew/2))
+        steps.append(fc.Extruder(on=False))
+        f=EW
+        while f < hew:
+          steps.append(fc.Point(x=sx-hew/2+f, y=sy, z=initial_z+layer*EH))
+          steps.append(fc.Extruder(on=True))
+          steps.append(fc.Point(y=sy+plates*pd))
+          
+          sp=sx-hew/2+f
+          f += EW
+          if f < hew:
+            steps.append(fc.Point(x=sx-hew/2+f))
+            steps.append(fc.Point(y=sy))
+          
+          sp=sx-hew/2+f
+          f += EW
+        steps.append(fc.Extruder(on=False))
+        #ringerl rechts
+        for plate in range(plates):
+          steps.append(fc.Point(x=sp, y=sy+pd*plate))
+          steps.append(fc.Extruder(on=True))
+          centre=fc.Point(x=sx+hew/2+layer*draft, y=sy+pd*plate+pd/4)
+          arc=(fc.arcXY(centre,pd/4,0.75*tau,0.5*tau,15))
+          steps.extend(arc)
+          steps.append(fc.Point(x=sp))
+          steps.append(fc.Point(y=sy+(plate+1)*pd))
+        steps.append(fc.Extruder(on=False))
+        steps.append(fc.Fan(speed_percent=lowfanspeed))
+          
+        
+        
+        
+      
+      elif layer % 2 == 1:
+        #forward
+        for plate in range(plates):
+          steps.append(fc.Point(x=sx-hew/2-layer*draft, y=sy+pd*plate, z=initial_z+layer*EH))
+          steps.append(fc.Extruder(on=True))
+          #close circle
+          centre=fc.Point(x=sx+hew/2+layer*draft, y=sy+pd*plate+pd/4)
+          arc=(fc.arcXY(centre,pd/4,0.75*tau,0.5*tau,15))
+          steps.extend(arc)
+          #far circle
+          centre=fc.Point(x=sx-hew/2-layer*draft, y=sy+pd*plate+pd*0.75)
+          arc=(fc.arcXY(centre,pd/4,-0.25*tau,-0.5*tau,15))
+          steps.extend(arc)
+          
+        steps.append(fc.Point(x=sx+hew/2+layer*draft))
+
+      else:
+        #backward
+        steps.append(fc.Point(z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=True))
+        for plate in range(plates):
+          revplate = plates-plate
+          steps.append(fc.Point(x=sx+hew/2+layer*draft, z=initial_z+layer*EH))
+          steps.append(fc.Extruder(on=True))
+          centre=fc.Point(x=sx-hew/2-layer*draft, y=sy+pd*revplate-pd*0.25, z=initial_z+layer*EH)
+          
+          arc=(fc.arcXY(centre,pd/4,-0.75*tau,0.5*tau,15))
+          steps.extend(arc)        
+          centre=fc.Point(x=sx+hew/2+layer*draft, y=sy+pd*revplate-pd*0.75, z=initial_z+layer*EH)
+          arc=(fc.arcXY(centre,pd/4,0.25*tau,-0.5*tau,15))
+          steps.extend(arc)
+        steps.append(fc.Point(x=sx-hew/2-layer*draft))
+        
+  elif midpoint == 0:  
+    midpoint = layer
+    steps.append(fc.Extruder(on=False))
+    #mittelschicht
+
+    f=0
+    steps.append(fc.Fan(speed_percent=highfanspeed))
+    
+    
+    while f < pd/2:
+      #linkes infill
+      steps.append(fc.Point(x=sx-hew/2-layer*draft-pd/4+f, y=sy, z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=True))
+      steps.append(fc.Point(y=sy+plates*pd))
+      f += EW
+      sp=sx-hew/2-layer*draft-pd/4+f
+      if f < pd/2:
+        steps.append(fc.Point(x=sx-hew/2-layer*draft-pd/4+f))
+        steps.append(fc.Point(y=sy))
+      f += EW 
+      sp=sx-hew/2-layer*draft-pd/4+f     
+    steps.append(fc.Extruder(on=False))
+    f=0
+    
+    for plate in range(plates):
+      #verbindungslinien
+      steps.append(fc.Point(x=sp, y=sy+pd*plate, z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=True))
+      steps.append(fc.Point(x=sx-hew/2, y=sy+pd*plate, z=initial_z+layer*EH))      
+      steps.append(fc.Point(y=sy+pd*(plate+0.5), z=initial_z+layer*EH))      
+      steps.append(fc.Point(x=sp, z=initial_z+layer*EH))      
+    steps.append(fc.Point(x=sp, y=sy+pd*(plates), z=initial_z+layer*EH))
+    steps.append(fc.Extruder(on=True))
+    steps.append(fc.Point(x=sx-hew/2, y=sy+pd*(plates), z=initial_z+layer*EH))
+    steps.append(fc.Extruder(on=False))
+      
+    f=EW
+    while f < hew:
+      #mitte
+      steps.append(fc.Point(x=sx-hew/2+f, y=sy, z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=True))
+      steps.append(fc.Point(y=sy+plates*pd))
+      sp=sx-hew/2+f
+      f += EW
+      
+      if f < hew:
+        steps.append(fc.Point(x=sx-hew/2+f))
+        steps.append(fc.Point(y=sy))
+      sp=sx-hew/2+f
+      f += EW
+      
+    steps.append(fc.Extruder(on=False))
+
+    f=0
+    sp = sx+hew/2
+    for plate in range(plates):
+      #verbindungslinien rechts
+      steps.append(fc.Point(x=sp, y=sy+pd*plate, z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=True))
+      steps.append(fc.Point(x=sx+hew/2+layer*draft-EW,z=initial_z+layer*EH))
+      steps.append(fc.Point(y=sy+pd*(plate+0.5), z=initial_z+layer*EH))
+      steps.append(fc.Point(x=sp, z=initial_z+layer*EH))
+    steps.append(fc.Point(x=sp, y=sy+pd*(plates), z=initial_z+layer*EH))
+    steps.append(fc.Extruder(on=True))
+    steps.append(fc.Point(x=sx+hew/2+layer*draft-EW, y=sy+pd*(plates), z=initial_z+layer*EH))
+    steps.append(fc.Extruder(on=False))
+    f=0
+    while f < pd/2:
+      #rechtes infill
+      steps.append(fc.Point(x=sx+hew/2+layer*draft+f, y=sy, z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=True))
+      steps.append(fc.Point(y=sy+plates*pd))
+      f += EW
+      if f < pd/2:
+        steps.append(fc.Point(x=sx+hew/2+layer*draft+f))
+        steps.append(fc.Point(y=sy))
+      f += EW 
+    steps.append(fc.Extruder(on=False))
+    f=0
+    steps.append(fc.Fan(speed_percent=lowfanspeed))
+  
+  elif layer % stabilizers == 0 :
+      #stabilisierungsbruecken
+        steps.append(fc.Fan(speed_percent=highfanspeed))
+      
+        for plate in range(plates):
+          #ringerl links
+          
+          steps.append(fc.Point(x=sx-hew/2, y=sy+pd*plate, z=initial_z+layer*EH))
+          steps.append(fc.Extruder(on=True))
+          centre=fc.Point(x=sx-hew/2-alayer*draft, y=sy+pd*plate+pd*0.25)
+          arc=(fc.arcXY(centre,pd/4,0.75*tau,-0.5*tau,15))
+          steps.extend(arc)
+          steps.append(fc.Point(x=sx-hew/2, y=sy+pd*(plate+0.5), z=initial_z+layer*EH))
+          #infill
+        steps.append(fc.Extruder(on=False))
+        steps.append(fc.Point(x=sx-hew/2-alayer*draft, y=sy+pd*(plates), z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=True))
+        steps.append(fc.Point(x=sx-hew/2, y=sy+pd*(plates), z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=False))
+        f=EW
+        while f < hew:
+          steps.append(fc.Point(x=sx-hew/2+f, y=sy, z=initial_z+layer*EH))
+          steps.append(fc.Extruder(on=True))
+          steps.append(fc.Point(y=sy+plates*pd))
+          
+          sp=sx-hew/2+f
+          f += EW
+          if f < hew:
+            steps.append(fc.Point(x=sx-hew/2+f))
+            steps.append(fc.Point(y=sy))
+          
+          sp=sx-hew/2+f
+          f += EW
+        steps.append(fc.Extruder(on=False))
+        
+        #restl
+        steps.append(fc.Point(x=sx+hew/2+alayer*draft, y=sy))
+        steps.append(fc.Extruder(on=True))
+        steps.append(fc.Point(x=sp))
+        steps.append(fc.Extruder(on=True))
+        #ringerl rechts
+        for plate in range(plates):
+          steps.append(fc.Point(x=sp, y=sy+pd*(plate)))
+          steps.append(fc.Extruder(on=True))
+          steps.append(fc.Point(y=sy+pd*(plate+0.5)))
+          centre=fc.Point(x=sx+hew/2+alayer*draft, y=sy+pd*(plate+0.75))
+          arc=(fc.arcXY(centre,pd/4,0.75*tau,0.5*tau,15))
+          steps.extend(arc)
+          steps.append(fc.Point(x=sp))
+          #steps.append(fc.Point(y=sy+(plate+1)*pd))
+        steps.append(fc.Extruder(on=False))
+        steps.append(fc.Fan(speed_percent=lowfanspeed))
+          
+ 
+    
+  else:
+    if layer == layers-1:
+      
+      steps.append(fc.Fan(speed_percent=highfanspeed))
+      #deckschicht
+      f=-EW
+      while f < hew+2*EW:
+        steps.append(fc.Point(x=sx-hew/2+f, y=sy, z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=True))
+        steps.append(fc.Point(y=sy+plates*pd))
+        f += EW
+        if f < hew+2*EW:
+          steps.append(fc.Point(x=sx-hew/2+f))
+          steps.append(fc.Point(y=sy))
+        f += EW
+      steps.append(fc.Extruder(on=False))
+      steps.append(fc.Fan(speed_percent=lowfanspeed))
+      
+    if layer % 2 != midpoint % 2:
+      for plate in range(plates):
+        steps.append(fc.Point(x=sx+hew/2+draft*alayer, y=sy+pd*plate, z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=True))
+        centre=fc.Point(x=sx-hew/2-alayer*draft, y=sy+pd*plate+pd/4)
+        arc=(fc.arcXY(centre,pd/4,0.75*tau,-0.5*tau,15))
+        steps.extend(arc)
+        centre=fc.Point(x=sx+hew/2+alayer*draft, y=sy+pd*plate+pd*0.75)
+        arc=(fc.arcXY(centre,pd/4,0.75*tau,0.5*tau,15))
+        steps.extend(arc)
+        
+      steps.append(fc.Point(x=sx-hew/2-draft*alayer, y=sy+pd*plate+pd))
+      steps.append(fc.Extruder(on=False))  
+        
+    else:
+      for plate in range(plates):
+        steps.append(fc.Point(x=sx-hew/2-draft*alayer, y=sy+pd*(plates-plate), z=initial_z+layer*EH))
+        steps.append(fc.Extruder(on=True))
+        centre=(fc.Point(x=sx+hew/2+draft*alayer, y=sy+pd*(plates-plate-1)+pd*0.75, z=initial_z+layer*EH))        
+        arc=(fc.arcXY(centre,pd/4,0.25*tau,-0.5*tau,15))
+        steps.extend(arc)
+        centre=fc.Point(x=sx-hew/2-alayer*draft, y=sy+pd*(plates-plate-1)+pd*0.25)
+        arc=(fc.arcXY(centre,pd/4,0.25*tau,+0.5*tau,15))
+        steps.extend(arc)
+        
+      steps.append(fc.Point(x=sx+hew/2+draft*alayer, y=sy+pd*(plates-plate-1), z=initial_z+layer*EH))
+      steps.append(fc.Extruder(on=False))      
+
+        
+        
+      
+
+      
+      
+      #steps.append(fc.Point(x=pd*(0.5+plate),y=50-layer*EH/2))
+      #centre=fc.Point(x=pd*(0.75+plate), y=50-layer*EH/2)
+      #arc=(fc.arcXY(centre,pd/4,0.5*tau,0.5*tau))
+      #if plate+1 == range(plates):
+        #steps.extend(arc)
+        
+#fc.transform(steps,'plot',fc.PlotControls(color_type='print_sequence')) 
+# instead of the above for-loop code, you can create the exact same design using built-in FullControl functions (uncomment the next two lines):
+# rectangle_steps = fc.rectangleXY(fc.Point(x=50, y=50, z=initial_z), 50, 50)
+# steps = fc.move(rectangle_steps, fc.Vector(z=EH), copy=True, copy_quantity=layers)#
+
